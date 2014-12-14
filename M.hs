@@ -10,6 +10,7 @@ import qualified Data.Map.Strict as M
 import Control.Applicative
 import Control.Monad 
 import Test.Hspec
+import Test.Hspec.Runner
 import Test.QuickCheck
 
 -- | source code shows how to use this
@@ -34,13 +35,14 @@ evaluate b = do
 read_bit b = evaluate b
 read_natural n = do
     xs <- forM n $ read_bit
-    return $ foldl ( \ x b -> 2 * x + fromIntegral (fromEnum b) ) (0 :: Integer) xs
+    return $ foldr ( \ b x -> 2 * x + fromIntegral (fromEnum b) ) (0 :: Integer) xs
 
 solve :: S.State [Var] (O.OBDD Var, R.Reader (M.Map Var Bool) a)
       -> IO (Maybe a)
 solve program = do
     let (c, action) = S.evalState program [ Var 0 .. ] 
     m <- O.some_model c
+    print m
     return $ case m of
         Nothing -> Nothing
         Just f -> Just $ R.runReader action f
@@ -91,7 +93,7 @@ times [] ys = []
 times (x:xs) ys =
     plus (map (x O.&&) ys) (O.constant False : times xs ys)
 
-test = hspec $ do
+test = hspecWith (defaultConfig { configQuickCheckMaxSize = Just 100 } ) $ do
     describe "equals" $ do
         it "reflexive" $ property $ \ x -> O.satisfiable $ equals (constant x) (constant x)
         it "works" $ property $ \ (NonNegative x) (NonNegative y) ->
