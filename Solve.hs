@@ -13,15 +13,15 @@ import Test.Hspec
 import Test.Hspec.Runner
 import Test.QuickCheck
 
--- | source code shows how to use this
+-- | source code shows how to use this:
 test1 = solve $ do
-   x <- unknown 7
-   y <- unknown 7
+   x <- natural 7
+   y <- natural 7
    constraint ( equals ( constant 1001 ) (times x y ) )
        ( (,) <$> read_natural x <*> read_natural y )
 
-unknown :: Int -> S.State [Var] Natural
-unknown w | w >= 0 = do
+natural :: Int -> S.State [Var] Natural
+natural w | w >= 0 = do
     vars <- S.get
     let (pre, post) = splitAt w vars
     S.put post
@@ -57,6 +57,27 @@ type Bit = O.OBDD Var
 -- | lsb comes first
 type Natural = [ Bit ]
 
+positive xs = O.or xs
+
+ge a b = let (g,e) = gte a b in g O.|| e
+gt a b = let (g,e) = gte a b in g 
+
+gte xs0 ys0 =
+    let (xs,ys) = align xs0 ys0
+        work [] [] = ( O.constant False, O.constant True )
+        work (x:xs) (y:ys) =
+          let ( g , e ) = work xs ys
+          in  ( g O.|| (e O.&& O.binary (>) x y)
+              , e O.&& O.binary (==) x y
+              )  
+    in  work xs ys
+
+align xs ys = 
+  let n = max (length xs) (length ys)
+      fill zs = zs ++ replicate (n - length zs)
+                (O.constant False)
+  in  ( fill xs, fill ys )
+
 equals [] ys = O.not $ O.or ys
 equals xs [] = O.not $ O.or xs
 equals (x:xs) (y:ys) =
@@ -88,10 +109,36 @@ plus xs ys =
         work cin [] [] = [ cin ]
     in  work (O.constant False) xs ys
     
-times :: Natural -> Natural -> Natural
-times [] ys = [] 
-times (x:xs) ys =
-    plus (map (x O.&&) ys) (O.constant False : times xs ys)
+times = times1
+
+times0 :: Natural -> Natural -> Natural
+times0 [] ys = [] 
+times0 (x:xs) ys =
+    plus (map (x O.&&) ys) (O.constant False : times0 xs ys)
+
+times1 xs ys =
+    let up = M.fromListWith (++) $ do
+          (i,x) <- zip [0..] xs
+          (j,y) <- zip [0..] ys
+          return (i+j, [x O.&& y] )
+        down [] = []
+        down ( [x] : rest ) = x : down rest
+        down ( [x,y] : rest ) = 
+          let (r,c) = add2 x y
+          in r : down (case rest of
+                          [] -> [[c]]
+                          r:est ->      (c : r): est)
+        down ( (x:y:z:here) : rest ) =
+          let (r,c) = add3 x y z
+          in down $ (here ++ [r]) : case rest of
+                [] -> [[c]]
+                r:est -> (c:r) : est
+        down args = error $ show $ map length args
+    in  down $ map snd $ M.toAscList up
+                   
+for = flip map
+
+-- * tests
 
 test = hspecWith (defaultConfig { configQuickCheckMaxSize = Just 100 } ) $ do
     describe "equals" $ do
