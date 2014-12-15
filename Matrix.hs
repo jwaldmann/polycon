@@ -67,8 +67,6 @@ strictly_greater l r = S.lift $ gt (topright l) (topright r)
 weakly_greater l r = S.lift $
   mo B.and $ zipWith ( \ xs ys -> mo B.and $ zipWith ge xs ys ) l r
 
-mo f xs = sequence xs >>= f
-
 rmatrix m = forM m $ \ row -> forM row $ \ n -> read_natural n
 
 matrix_ dim bits = do
@@ -89,8 +87,17 @@ mtimes a b = S.lift $
   forM a $ \ row ->
     forM (transpose b) $ \ col -> do
        p : ps <- sequence $ zipWith times row col
-       foldM plus p ps
-       
+       -- foldM plus p ps
+       binary_fold undefined plus $ p : ps
+
+binary_fold nil cons =
+   let run [] = constant nil
+       run [x] = return x
+       run (x:y:zs) = do
+           xy <- cons x y
+           run (zs ++ [xy])
+   in  run    
+
 type Inter i = M.Map i Matrix
 
 inter sigma dim bits = M.fromList

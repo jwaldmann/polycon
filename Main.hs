@@ -9,7 +9,7 @@ main = do
     [ file ] <- getArgs
     sys <- get_srs file
     print $ pretty sys
-    handle 1 $ T.rules sys
+    handle 2 $ T.rules sys
 
 handle bits [] = putStrLn "done"
 handle bits us = do    

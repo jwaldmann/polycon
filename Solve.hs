@@ -25,6 +25,7 @@ test1 = solve $ do
    constraint e
        ( (,) <$> read_natural x <*> read_natural y )
 
+-- | allocate unknown natural. argument is bit width
 -- natural :: Int -> S.State [Var] Natural
 natural w | w >= 0 = do
     vars <- S.get
@@ -56,6 +57,8 @@ constraint c action = return (c, action)
     
 -- *
 
+mo f xs = sequence xs >>= f
+
 newtype Var = Var Int deriving (Eq, Ord, Show, Enum)
 
 type Bit = BDD Var
@@ -65,7 +68,7 @@ type Natural = [ Bit ]
 
 positive xs = B.or xs
 
-ge a b = do (g,e) <- gte a b ;  g B.|| e
+ge a b = do (g,e) <- gte a b ; g B.|| e
 gt a b = do (g,e) <- gte a b ; return g 
 
 gte xs0 ys0 = do
@@ -74,9 +77,11 @@ gte xs0 ys0 = do
             (,) <$>  B.constant False <*> B.constant True 
         work (x:xs) (y:ys) = do
           ( g , e ) <- work xs ys
-          ny <- B.not y ; xgy <- B.and [e, x, ny ]
+          ny <- B.not y
+          xgy <- B.and [e, x, ny ]
           gg <- g B.|| xgy
-          xey <- B.biimp x y ; ee <- e B.&& xey
+          xey <- B.biimp x y
+          ee <- e B.&& xey
           return (gg, ee)
     work xs ys
 
@@ -86,12 +91,10 @@ align xs ys = do
       fill zs = zs ++ replicate (n - length zs) z
   return ( fill xs, fill ys )
 
-equals [] ys = B.not =<< B.or ys
-equals xs [] = B.not =<< B.or xs
-equals (x:xs) (y:ys) = do
-    e <- B.biimp x y
-    ee <- equals xs ys
-    e B.&& ee
+equals xs0 ys0 = do
+    (xs,ys) <- align xs0 ys0
+    es <- forM (zip xs ys) $ \ (x,y) -> B.biimp x y
+    B.and es
        
 -- constant :: Integer -> Natural
 constant n =
@@ -101,9 +104,12 @@ constant n =
 
 -- | (result, carry)     
 -- add2 :: Bit -> Bit -> (Bit, Bit)
+-- using 2 ops
 add2 x y = (,) <$> B.xor x y <*> ( x B.&& y )
 
+-- | (result, carry)
 -- add3 :: Bit -> Bit -> Bit -> (Bit, Bit)
+-- using 5 ops
 add3 x y z = do
     (r1,c1) <- add2 x y ; (r2,c2) <- add2 r1 z
     (,) <$> return r2 <*> ( c1 B.|| c2)
@@ -132,28 +138,28 @@ times0 (x:xs) ys = do
     xsys <- (:) <$> B.constant False <*> times0 xs ys
     plus xys xsys
 
-{-
-times1 xs ys =
-    let up = M.fromListWith (++) $ do
+times1 xs ys = do
+    up <- M.fromListWith (++) <$> sequence ( do
           (i,x) <- zip [0..] xs
           (j,y) <- zip [0..] ys
-          return (i+j, [x B.&& y] )
-        down [] = []
-        down ( [x] : rest ) = x : down rest
-        down ( [x,y] : rest ) = 
-          let (r,c) = add2 x y
-          in r : down (case rest of
+          return $ do
+            xy <- x B.&& y
+            return (i+j, [xy])   )
+    let down [] = return []
+        down ( [x] : rest ) = (x :) <$> down rest
+        down ( [x,y] : rest ) = do
+          (r,c) <- add2 x y
+          (r :) <$> down (case rest of
                           [] -> [[c]]
                           r:est ->      (c : r): est)
-        down ( (x:y:z:here) : rest ) =
-          let (r,c) = add3 x y z
-          in down $ (here ++ [r]) : case rest of
+        down ( (x:y:z:here) : rest ) = do
+          (r,c) <- add3 x y z
+          down $ (here ++ [r]) : case rest of
                 [] -> [[c]]
                 r:est -> (c:r) : est
         down args = error $ show $ map length args
-    in  down $ map snd $ M.toAscList up
+    down $ map snd $ M.toAscList up
 
--}
 
 for = flip map
 
