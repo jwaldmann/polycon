@@ -6,39 +6,54 @@ import Solve
 import Control.Monad
 import Control.Applicative
 
-import qualified OBDD as O
+import qualified Buddy as B
 import qualified TPDB.Data as T
 
 import qualified Data.Map as M
 import Data.List ( transpose, nub )
 
-remove dim bits srs = solve $ do
-    int <- inter (sigma srs) dim bits
-    let (ok, sws) = compatible int srs
-    constraint ( monotone int O.&& ok ) $ do
-        rinter int
+import qualified Control.Monad.State as S
 
-sigma srs = nub $ do u <- T.rules srs ; T.lhs u ++ T.rhs u
+import System.IO
+
+remove dim bits us = do
+  hPutStrLn stderr $ unwords
+    [ "remove", "dim", show dim, "bits", show bits ]
+  solve $ do
+    int <- inter (sigma us) dim bits
+    (ok, sws) <- compatible int us
+    mo <- monotone int
+    good <- S.lift $ mo B.&& ok
+    constraint good $ do
+        i <- rinter int
+        us <- forM sws $ \ (s, w, u) -> do
+          ss <- read_bit s
+          return (ss, u)
+        return (i, us)
+
+sigma us = nub $ do u <- us ; T.lhs u ++ T.rhs u
   
-monotone int = O.and $ for (M.elems int) $ \ m ->
-  positive (topleft m) O.&& positive (botright m)
+monotone int = S.lift $ mo B.and $ for (M.elems int) $ \ m ->
+  do tl <- positive (topleft m) ; br <- positive (botright m)
+     tl B.&& br
 
-compatible int srs =
-  let sws = for (T.rules srs) $ \ u ->
-        let l = eval int $ T.lhs u
-            r = eval int $ T.rhs u
-            s = strictly_greater l r
-            w = weakly_greater l r
-        in  (s, w, u)
-      allweak = O.and $ for sws $ \ (s,w,u) -> w
-      somestrict = O.or $ for sws $ \ (s,w,u) -> s
-  in  ( allweak O.&& somestrict, sws )
+compatible int us = do
+  sws <- forM us $ \ u -> do
+      l <- eval int $ T.lhs u
+      r <- eval int $ T.rhs u
+      s <- strictly_greater l r
+      w <- weakly_greater l r
+      return (s, w, u)
+  allweak <- S.lift $ B.and $ for sws $ \ (s,w,u) -> w
+  somestrict <- S.lift $  B.or $ for sws $ \ (s,w,u) -> s
+  good <- S.lift $ allweak B.&& somestrict
+  return (good , sws )
 
-eval int s =
+eval int s = do
   let dim = length $ head $ M.elems int
-      unit = for [1..dim] $ \ i -> for [1..dim] $ \ j ->
-            constant $ if i == j then 1 else 0
-  in  foldr mtimes unit $ for s ( int M.! )
+  unit <- forM [1..dim] $ \ i -> forM [1..dim] $ \ j ->
+       S.lift $ constant $ if i == j then 1::Integer else 0
+  foldM mtimes unit $ for s ( int M.! )
       
 type Matrix = [[Natural]]
 
@@ -47,10 +62,12 @@ topright m = last $ head m
 botright m = last $ last m
 
 
-strictly_greater l r = gt (topright l) (topright r)
+strictly_greater l r = S.lift $ gt (topright l) (topright r)
 
-weakly_greater l r =
-  O.and $ zipWith ( \ xs ys -> O.and $ zipWith ge xs ys ) l r
+weakly_greater l r = S.lift $
+  mo B.and $ zipWith ( \ xs ys -> mo B.and $ zipWith ge xs ys ) l r
+
+mo f xs = sequence xs >>= f
 
 rmatrix m = forM m $ \ row -> forM row $ \ n -> read_natural n
 
@@ -60,18 +77,19 @@ matrix_ dim bits = do
         natural bits
 
 matrix dim bits = do
-    forM [ 1 .. dim ] $ \ i ->
-      forM [ 1 .. dim ] $ \ j ->
+    forM [ 1 :: Int .. dim ] $ \ i ->
+      forM [ 1 :: Int .. dim ] $ \ j ->
         if j == 1
-        then return $ constant (if i == 1 then 1 else 0)
+        then S.lift $ constant (if i == 1 then 1 :: Integer else 0)
         else if i == dim
-        then return $ constant (if j == dim then 1 else 0)
+        then S.lift $ constant (if j == dim then 1 :: Integer else 0)
         else natural bits
 
-mtimes a b =
-  for a $ \ row ->
-    for (transpose b) $ \ col ->
-       foldr1 plus $ zipWith times row col
+mtimes a b = S.lift $ 
+  forM a $ \ row ->
+    forM (transpose b) $ \ col -> do
+       p : ps <- sequence $ zipWith times row col
+       foldM plus p ps
        
 type Inter i = M.Map i Matrix
 
