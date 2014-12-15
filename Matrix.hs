@@ -65,7 +65,9 @@ botright m = last $ last m
 strictly_greater l r = S.lift $ gt (topright l) (topright r)
 
 weakly_greater l r = S.lift $
-  mo B.and $ zipWith ( \ xs ys -> mo B.and $ zipWith ge xs ys ) l r
+  mo B.and $ concat
+      $ for ( zip l r ) $ \ (xs, ys) ->
+        for ( zip xs ys) $  \ (x,y) -> ge x y
 
 rmatrix m = forM m $ \ row -> forM row $ \ n -> read_natural n
 

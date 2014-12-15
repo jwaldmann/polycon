@@ -17,9 +17,12 @@ import Test.QuickCheck
 
 -- | source code shows how to use this:
 test1 = solve $ do
-   x <- natural 7
-   y <- natural 7
-   c <- S.lift $ constant 1001
+   x <- natural 12
+   y <- natural 14
+   c <- S.lift $ constant $
+        4093 * 8779
+        -- 1676321 * 909091
+        -- 1052788969 * 1056689261
    xy <- S.lift $ times x y
    e <- S.lift $ equals c xy 
    constraint e
@@ -129,7 +132,7 @@ plus xs ys = do
     z <- B.constant False
     work z xs ys
     
-times = times0
+times = times1
 
 -- times0 :: Natural -> Natural -> Natural
 times0 [] ys = return [] 
@@ -138,7 +141,13 @@ times0 (x:xs) ys = do
     xsys <- (:) <$> B.constant False <*> times0 xs ys
     plus xys xsys
 
-times1 xs ys = do
+times1 [] ys = return [] 
+times1 (x:xs) ys = do
+    xys <- forM ys $ (x B.&&)
+    xsys <- (:) <$> B.constant False <*> times1 ys xs 
+    plus xys xsys
+
+times2 xs ys = do
     up <- M.fromListWith (++) <$> sequence ( do
           (i,x) <- zip [0..] xs
           (j,y) <- zip [0..] ys
