@@ -44,8 +44,8 @@ compatible int us = do
       s <- strictly_greater l r
       w <- weakly_greater l r
       return (s, w, u)
-  allweak <- S.lift $ B.and $ for sws $ \ (s,w,u) -> w
-  somestrict <- S.lift $  B.or $ for sws $ \ (s,w,u) -> s
+  allweak <- S.lift $ B.plain_and $ for sws $ \ (s,w,u) -> w
+  somestrict <- S.lift $  B.plain_or $ for sws $ \ (s,w,u) -> s
   good <- S.lift $ allweak B.&& somestrict
   return (good , sws )
 
@@ -65,7 +65,7 @@ botright m = last $ last m
 strictly_greater l r = S.lift $ gt (topright l) (topright r)
 
 weakly_greater l r = S.lift $
-  mo B.and $ concat
+  mo B.plain_and $ concat
       $ for ( zip l r ) $ \ (xs, ys) ->
         for ( zip xs ys) $  \ (x,y) -> ge x y
 
